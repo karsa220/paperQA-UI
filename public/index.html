@@ -1,43 +1,157 @@
 <!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#000000" />
-    <meta
-      name="description"
-      content="Web site created using create-react-app"
-    />
-    <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
-    <!--
-      manifest.json provides metadata used when your web app is installed on a
-      user's mobile device or desktop. See https://developers.google.com/web/fundamentals/web-app-manifest/
-    -->
-    <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
-    <!--
-      Notice the use of %PUBLIC_URL% in the tags above.
-      It will be replaced with the URL of the `public` folder during the build.
-      Only files inside the `public` folder can be referenced from the HTML.
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>多智能体科研论文问答系统</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React & ReactDOM CDN -->
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        .message-container {
+            overflow-y: auto;
+            height: calc(100vh - 180px);
+        }
+        .user-message {
+            background-color: #f1f5f9;
+        }
+        .assistant-message {
+            background-color: #ffffff;
+            border: 1px solid #e2e8f0;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 font-sans">
+<div id="root"></div>
 
-      Unlike "/favicon.ico" or "favicon.ico", "%PUBLIC_URL%/favicon.ico" will
-      work correctly both with client-side routing and a non-root public URL.
-      Learn how to configure a non-root public URL by running `npm run build`.
-    -->
-    <title>React App</title>
-  </head>
-  <body>
-    <noscript>You need to enable JavaScript to run this app.</noscript>
-    <div id="root"></div>
-    <!--
-      This HTML file is a template.
-      If you open it directly in the browser, you will see an empty page.
+<script type="text/babel">
+    const { useState, useEffect, useRef } = React;
 
-      You can add webfonts, meta tags, or analytics to this file.
-      The build step will place the bundled scripts into the <body> tag.
+    function App() {
+        const [messages, setMessages] = useState([
+            {
+                id: 1,
+                role: 'assistant',
+                content: '您好！我是多智能体科研论文检索助手，请问您想查询什么领域的论文？例如：“最近关于大语言模型的综述有哪些？”',
+            }
+        ]);
+        const [inputValue, setInputValue] = useState('');
+        const [isLoading, setIsLoading] = useState(false);
+        const messagesEndRef = useRef(null);
 
-      To begin the development, run `npm start` or `yarn start`.
-      To create a production bundle, use `npm run build` or `yarn build`.
-    -->
-  </body>
+        const scrollToBottom = () => {
+            messagesEndRef?.current?.scrollIntoView({ behavior: "smooth" });
+        };
+
+        useEffect(() => {
+            scrollToBottom();
+        }, [messages]);
+
+        const handleSubmit = async (e) => {
+            e.preventDefault();
+            if (!inputValue.trim() || isLoading) return;
+
+            // 添加用户消息
+            const userMessage = {
+                id: Date.now(),
+                role: 'user',
+                content: inputValue.trim(),
+            };
+            setMessages((prev) => [...prev, userMessage]);
+            setInputValue('');
+            setIsLoading(true);
+
+            // 模拟后端调用（替换为实际 API 调用）
+            try {
+                // 👇 模拟 1.5 秒的“思考”时间
+                await new Promise((resolve) => setTimeout(resolve, 1500));
+
+                // 模拟多智能体系统回复（实际应从 API 获取）
+                const assistantReply = {
+                    id: Date.now() + 1,
+                    role: 'assistant',
+                    content: `正在为您检索与“${inputValue}”相关的科研论文……\n\n例如：\n- 《A Survey on Large Language Models》(2024)\n- 《Efficient Retrieval-Augmented Generation for Scientific QA》(NeurIPS 2024)\n\n是否需要我提供摘要或 PDF 链接？`,
+                };
+                setMessages((prev) => [...prev, assistantReply]);
+            } catch (error) {
+                setMessages((prev) => [
+                    ...prev,
+                    {
+                        id: Date.now() + 1,
+                        role: 'assistant',
+                        content: '抱歉，系统暂时无法处理请求，请稍后再试。⚠️',
+                    },
+                ]);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        return (
+            <div className="max-w-4xl mx-auto p-4 flex flex-col h-screen">
+                {/* Header */}
+                <div className="py-4 text-center">
+                    <h1 className="text-2xl font-bold text-gray-800">多智能体科研论文问答系统</h1>
+                    <p className="text-sm text-gray-500">基于多智能体协作的智能文献检索与问答</p>
+                </div>
+
+                {/* Messages */}
+                <div className="message-container mb-4 space-y-4">
+                    {messages.map((msg) => (
+                        <div
+                            key={msg.id}
+                            className={`p-4 rounded-lg max-w-3xl ${msg.role === 'user' ? 'user-message ml-auto' : 'assistant-message'}`}
+                        >
+                            <div className="font-semibold text-gray-700 mb-1">
+                                {msg.role === 'user' ? 'You' : '多智能体系统'}
+                            </div>
+                            <div className="whitespace-pre-wrap text-gray-800">{msg.content}</div>
+                        </div>
+                    ))}
+
+                    {isLoading && (
+                        <div className="p-4 rounded-lg assistant-message max-w-3xl">
+                            <div className="font-semibold text-gray-700 mb-1">多智能体系统</div>
+                            <div className="flex space-x-2">
+                                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+                                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></div>
+                            </div>
+                        </div>
+                    )}
+                    <div ref={messagesEndRef} />
+                </div>
+
+                {/* Input Form */}
+                <form onSubmit={handleSubmit} className="mt-auto">
+                    <div className="flex gap-2">
+                        <input
+                            type="text"
+                            value={inputValue}
+                            onChange={(e) => setInputValue(e.target.value)}
+                            placeholder="请输入您的科研问题，例如：最近关于扩散模型的论文有哪些？"
+                            className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            disabled={isLoading}
+                        />
+                        <button
+                            type="submit"
+                            className={`px-6 py-3 rounded-lg font-medium ${isLoading ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}
+                            disabled={isLoading || !inputValue.trim()}
+                        >
+                            发送
+                        </button>
+                    </div>
+                </form>
+            </div>
+        );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+</script>
+</body>
 </html>
