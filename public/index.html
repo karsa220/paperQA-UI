@@ -4,25 +4,17 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
     <title>多智能体科研论文问答系统</title>
-    <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- React & ReactDOM CDN -->
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-    <!-- Babel for JSX -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <style>
-        .message-container {
-            overflow-y: auto;
-            height: calc(100vh - 180px);
-        }
-        .user-message {
-            background-color: #f1f5f9;
-        }
-        .assistant-message {
-            background-color: #ffffff;
-            border: 1px solid #e2e8f0;
-        }
+        .sidebar-height { height: calc(100vh - 120px); }
+        .chat-height { height: calc(100vh - 200px); }
+        .user-message { background-color: #f1f5f9; align-self: flex-end; }
+        .assistant-message { background-color: #ffffff; border: 1px solid #e2e8f0; align-self: flex-start; }
+        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
     </style>
 </head>
 <body class="bg-gray-50 font-sans">
@@ -32,120 +24,211 @@
     const { useState, useEffect, useRef } = React;
 
     function App() {
-        const [messages, setMessages] = useState([
-            {
-                id: 1,
-                role: 'assistant',
-                content: '您好！我是多智能体科研论文检索助手，请问您想查询什么领域的论文？例如：“最近关于大语言模型的综述有哪些？”',
-            }
-        ]);
+        // --- 状态管理 ---
+        const [sessions, setSessions] = useState([]); // 左侧列表
+        const [currentSessionId, setCurrentSessionId] = useState(null); // 当前会话ID
+        const [messages, setMessages] = useState([]); // 当前对话的消息
         const [inputValue, setInputValue] = useState('');
         const [isLoading, setIsLoading] = useState(false);
         const messagesEndRef = useRef(null);
 
-        const scrollToBottom = () => {
-            messagesEndRef?.current?.scrollIntoView({ behavior: "smooth" });
-        };
+        // --- 初始化：获取会话列表 ---
+        useEffect(() => {
+            fetchSessions();
+        }, []);
+
+        // --- 切换会话时加载消息 ---
+        useEffect(() => {
+            if (currentSessionId) {
+                loadSessionMessages(currentSessionId);
+            } else {
+                setMessages([{
+                    id: 'welcome',
+                    role: 'assistant',
+                    content: '您好！我是多智能体科研助手。点击左侧“新对话”或直接在此提问开始探索吧！'
+                }]);
+            }
+        }, [currentSessionId]);
 
         useEffect(() => {
-            scrollToBottom();
+            messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
         }, [messages]);
+
+        // --- 模拟 API 调用 (需配合 Python 后端) ---
+        const fetchSessions = async () => {
+            try {
+                const res = await fetch('http://127.0.0.1:8000/sessions');
+                const data = await res.json();
+                setSessions(data);
+            } catch (e) { console.error("无法获取列表"); }
+        };
+
+        const loadSessionMessages = async (id) => {
+            try {
+                const res = await fetch(`http://127.0.0.1:8000/sessions/${id}/messages`);
+                const data = await res.json();
+                setMessages(data);
+            } catch (e) { console.error("无法加载消息"); }
+        };
+
+        const deleteSession = async (e, id) => {
+            e.stopPropagation();
+            if (!confirm("确定删除此对话吗？")) return;
+            try {
+                await fetch(`http://127.0.0.1:8000/sessions/${id}`, { method: 'DELETE' });
+                if (currentSessionId === id) setCurrentSessionId(null);
+                fetchSessions();
+            } catch (e) { console.error("删除失败"); }
+        };
+
+        const handleNewChat = () => {
+            setCurrentSessionId(null);
+            setMessages([]);
+        };
 
         const handleSubmit = async (e) => {
             e.preventDefault();
             if (!inputValue.trim() || isLoading) return;
 
-            // 添加用户消息
-            const userMessage = {
-                id: Date.now(),
-                role: 'user',
-                content: inputValue.trim(),
-            };
-            setMessages((prev) => [...prev, userMessage]);
+            const userText = inputValue.trim();
+            const userMessage = { id: Date.now(), role: 'user', content: userText };
+
+            // 立即显示用户消息
+            const newMessages = [...messages, userMessage];
+            setMessages(newMessages);
             setInputValue('');
             setIsLoading(true);
 
-            // 模拟后端调用（替换为实际 API 调用）
             try {
-                // 👇 模拟 1.5 秒的“思考”时间
-                await new Promise((resolve) => setTimeout(resolve, 1500));
+                const response = await fetch('http://127.0.0.1:8000/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        session_id: currentSessionId, // 如果是 null，后端应创建新 Session
+                        content: userText,
+                        history: newMessages.slice(-6).map(m => ({ role: m.role, content: m.content })) // 只传最近6条避免Token超限
+                    }),
+                });
 
-                // 模拟多智能体系统回复（实际应从 API 获取）
-                const assistantReply = {
+                const data = await response.json();
+
+                // 如果是新会话，更新 ID 并刷新列表
+                if (!currentSessionId && data.session_id) {
+                    setCurrentSessionId(data.session_id);
+                    fetchSessions();
+                }
+
+                setMessages(prev => [...prev, {
                     id: Date.now() + 1,
                     role: 'assistant',
-                    content: `正在为您检索与“${inputValue}”相关的科研论文……\n\n例如：\n- 《A Survey on Large Language Models》(2024)\n- 《Efficient Retrieval-Augmented Generation for Scientific QA》(NeurIPS 2024)\n\n是否需要我提供摘要或 PDF 链接？`,
-                };
-                setMessages((prev) => [...prev, assistantReply]);
+                    content: data.reply
+                }]);
             } catch (error) {
-                setMessages((prev) => [
-                    ...prev,
-                    {
-                        id: Date.now() + 1,
-                        role: 'assistant',
-                        content: '抱歉，系统暂时无法处理请求，请稍后再试。⚠️',
-                    },
-                ]);
+                setMessages(prev => [...prev, { id: 'err', role: 'assistant', content: '服务响应错误，请检查后端。⚠️' }]);
             } finally {
                 setIsLoading(false);
             }
         };
 
         return (
-            <div className="max-w-4xl mx-auto p-4 flex flex-col h-screen">
-                {/* Header */}
-                <div className="py-4 text-center">
-                    <h1 className="text-2xl font-bold text-gray-800">多智能体科研论文问答系统</h1>
-                    <p className="text-sm text-gray-500">基于多智能体协作的智能文献检索与问答</p>
-                </div>
-
-                {/* Messages */}
-                <div className="message-container mb-4 space-y-4">
-                    {messages.map((msg) => (
-                        <div
-                            key={msg.id}
-                            className={`p-4 rounded-lg max-w-3xl ${msg.role === 'user' ? 'user-message ml-auto' : 'assistant-message'}`}
-                        >
-                            <div className="font-semibold text-gray-700 mb-1">
-                                {msg.role === 'user' ? 'You' : '多智能体系统'}
-                            </div>
-                            <div className="whitespace-pre-wrap text-gray-800">{msg.content}</div>
-                        </div>
-                    ))}
-
-                    {isLoading && (
-                        <div className="p-4 rounded-lg assistant-message max-w-3xl">
-                            <div className="font-semibold text-gray-700 mb-1">多智能体系统</div>
-                            <div className="flex space-x-2">
-                                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-                                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-                                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></div>
-                            </div>
-                        </div>
-                    )}
-                    <div ref={messagesEndRef} />
-                </div>
-
-                {/* Input Form */}
-                <form onSubmit={handleSubmit} className="mt-auto">
-                    <div className="flex gap-2">
-                        <input
-                            type="text"
-                            value={inputValue}
-                            onChange={(e) => setInputValue(e.target.value)}
-                            placeholder="请输入您的科研问题，例如：最近关于扩散模型的论文有哪些？"
-                            className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            disabled={isLoading}
-                        />
+            <div className="flex h-screen w-full bg-white overflow-hidden">
+                {/* 1. 左侧侧边栏 */}
+                <div className="w-72 bg-gray-900 flex flex-col text-white">
+                    <div className="p-4">
                         <button
-                            type="submit"
-                            className={`px-6 py-3 rounded-lg font-medium ${isLoading ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}
-                            disabled={isLoading || !inputValue.trim()}
+                            onClick={handleNewChat}
+                            className="w-full flex items-center justify-center gap-2 border border-gray-600 rounded-lg py-2 hover:bg-gray-800 transition shadow-sm"
                         >
-                            发送
+                            <span className="text-xl">+</span> 新对话
                         </button>
                     </div>
-                </form>
+
+                    <div className="flex-1 overflow-y-auto sidebar-height px-2 space-y-1">
+                        {sessions.map(s => (
+                            <div
+                                key={s.id}
+                                onClick={() => setCurrentSessionId(s.id)}
+                                className={`group flex items-center justify-between p-3 rounded-lg cursor-pointer transition ${currentSessionId === s.id ? 'bg-gray-700' : 'hover:bg-gray-800'}`}
+                            >
+                                <div className="flex items-center gap-3 overflow-hidden">
+                                    <span className="text-gray-400">💬</span>
+                                    <span className="truncate text-sm font-medium">{s.title || '新对话'}</span>
+                                </div>
+                                <button
+                                    onClick={(e) => deleteSession(e, s.id)}
+                                    className="opacity-0 group-hover:opacity-100 p-1 hover:text-red-400"
+                                >
+                                    🗑️
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+
+                    <div className="p-4 border-t border-gray-800 text-xs text-gray-500 text-center">
+                        多智能体科研助手 v2.0
+                    </div>
+                </div>
+
+                {/* 2. 右侧对话主区域 */}
+                <div className="flex-1 flex flex-col">
+                    {/* Header */}
+                    <div className="h-16 border-b flex items-center px-8 justify-between bg-white shadow-sm">
+                        <h2 className="font-bold text-gray-700">
+                            {currentSessionId ? "正在对话" : "新对话问答"}
+                        </h2>
+                    </div>
+
+                    {/* Messages Container */}
+                    <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 chat-height flex flex-col">
+                        {messages.map((msg) => (
+                            <div
+                                key={msg.id}
+                                className={`flex flex-col max-w-[85%] ${msg.role === 'user' ? 'self-end' : 'self-start'}`}
+                            >
+                                <div className={`px-4 py-3 rounded-2xl shadow-sm ${msg.role === 'user' ? 'user-message text-gray-800 rounded-tr-none' : 'assistant-message text-gray-800 rounded-tl-none'}`}>
+                                    <div className="text-xs font-bold mb-1 opacity-50 uppercase">
+                                        {msg.role === 'user' ? 'YOU' : 'AGENT'}
+                                    </div>
+                                    <div className="whitespace-pre-wrap leading-relaxed">{msg.content}</div>
+                                </div>
+                            </div>
+                        ))}
+                        {isLoading && (
+                            <div className="self-start assistant-message px-4 py-3 rounded-2xl rounded-tl-none shadow-sm">
+                                <div className="flex space-x-1 py-2">
+                                    <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce"></div>
+                                    <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                                    <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></div>
+                                </div>
+                            </div>
+                        )}
+                        <div ref={messagesEndRef} />
+                    </div>
+
+                    {/* Input Area */}
+                    <div className="p-6 border-t bg-white">
+                        <form onSubmit={handleSubmit} className="max-w-4xl mx-auto relative">
+                            <input
+                                type="text"
+                                value={inputValue}
+                                onChange={(e) => setInputValue(e.target.value)}
+                                placeholder="输入您的问题..."
+                                className="w-full px-5 py-4 bg-gray-100 border-none rounded-xl focus:ring-2 focus:ring-blue-500 outline-none pr-16 transition-all"
+                                disabled={isLoading}
+                            />
+                            <button
+                                type="submit"
+                                className={`absolute right-3 top-1/2 -translate-y-1/2 px-4 py-2 rounded-lg font-medium transition ${isLoading ? 'text-gray-400' : 'text-blue-600 hover:bg-blue-50'}`}
+                                disabled={isLoading || !inputValue.trim()}
+                            >
+                                发送
+                            </button>
+                        </form>
+                        <p className="text-center text-xs text-gray-400 mt-3">
+                            提示：对话过长时系统会自动截断旧消息以节省 Token
+                        </p>
+                    </div>
+                </div>
             </div>
         );
     }
