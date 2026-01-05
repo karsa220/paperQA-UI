@@ -23,38 +23,66 @@
 <script type="text/babel">
     const { useState, useEffect, useRef } = React;
 
+    // --- 复制按钮组件 (Gemini 风格) ---
+    function CopyButton({ text }) {
+        const [copied, setCopied] = useState(false);
+
+        const handleCopy = async (e) => {
+            e.stopPropagation();
+            try {
+                await navigator.clipboard.writeText(text);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
+            } catch (err) {
+                console.error('复制失败', err);
+            }
+        };
+
+        return (
+            <button
+                onClick={handleCopy}
+                className="p-1.5 rounded-md hover:bg-gray-200 transition-colors duration-200 text-gray-400 hover:text-gray-600 flex items-center gap-1"
+            >
+                {copied ? (
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-green-500">
+                        <polyline points="20 6 9 17 4 12"></polyline>
+                    </svg>
+                ) : (
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                    </svg>
+                )}
+                <span className="text-[10px] font-medium">{copied ? '已复制' : ''}</span>
+            </button>
+        );
+    }
+
     function App() {
-        // --- 状态管理 ---
-        const [sessions, setSessions] = useState([]); // 左侧列表
-        const [currentSessionId, setCurrentSessionId] = useState(null); // 当前会话ID
-        const [messages, setMessages] = useState([]); // 当前对话的消息
+        const [sessions, setSessions] = useState([]);
+        const [currentSessionId, setCurrentSessionId] = useState(null);
+        const [messages, setMessages] = useState([]);
         const [inputValue, setInputValue] = useState('');
         const [isLoading, setIsLoading] = useState(false);
         const messagesEndRef = useRef(null);
 
-        // --- 初始化：获取会话列表 ---
-        useEffect(() => {
-            fetchSessions();
-        }, []);
+        // --- 初始化与数据加载 ---
+        useEffect(() => { fetchSessions(); }, []);
 
-        // --- 切换会话时加载消息 ---
         useEffect(() => {
-            if (currentSessionId) {
-                loadSessionMessages(currentSessionId);
-            } else {
+            if (currentSessionId) { loadSessionMessages(currentSessionId); }
+            else {
                 setMessages([{
                     id: 'welcome',
                     role: 'assistant',
-                    content: '您好！我是多智能体科研助手。点击左侧“新对话”或直接在此提问开始探索吧！'
+                    content: '您好！我是多智能体科研助手。我已经更新了复制功能，您可以点击气泡下方的图标快速提取信息。'
                 }]);
             }
         }, [currentSessionId]);
 
-        useEffect(() => {
-            messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-        }, [messages]);
+        useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
-        // --- 模拟 API 调用 (需配合 Python 后端) ---
+        // --- 逻辑函数 ---
         const fetchSessions = async () => {
             try {
                 const res = await fetch('http://127.0.0.1:8000/sessions');
@@ -92,9 +120,8 @@
 
             const userText = inputValue.trim();
             const userMessage = { id: Date.now(), role: 'user', content: userText };
-
-            // 立即显示用户消息
             const newMessages = [...messages, userMessage];
+
             setMessages(newMessages);
             setInputValue('');
             setIsLoading(true);
@@ -104,27 +131,19 @@
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        session_id: currentSessionId, // 如果是 null，后端应创建新 Session
+                        session_id: currentSessionId,
                         content: userText,
-                        history: newMessages.slice(-6).map(m => ({ role: m.role, content: m.content })) // 只传最近6条避免Token超限
+                        history: newMessages.slice(-6).map(m => ({ role: m.role, content: m.content }))
                     }),
                 });
-
                 const data = await response.json();
-
-                // 如果是新会话，更新 ID 并刷新列表
                 if (!currentSessionId && data.session_id) {
                     setCurrentSessionId(data.session_id);
                     fetchSessions();
                 }
-
-                setMessages(prev => [...prev, {
-                    id: Date.now() + 1,
-                    role: 'assistant',
-                    content: data.reply
-                }]);
+                setMessages(prev => [...prev, { id: Date.now() + 1, role: 'assistant', content: data.reply }]);
             } catch (error) {
-                setMessages(prev => [...prev, { id: 'err', role: 'assistant', content: '服务响应错误，请检查后端。⚠️' }]);
+                setMessages(prev => [...prev, { id: 'err', role: 'assistant', content: '服务响应错误。⚠️' }]);
             } finally {
                 setIsLoading(false);
             }
@@ -135,61 +154,42 @@
                 {/* 1. 左侧侧边栏 */}
                 <div className="w-72 bg-gray-900 flex flex-col text-white">
                     <div className="p-4">
-                        <button
-                            onClick={handleNewChat}
-                            className="w-full flex items-center justify-center gap-2 border border-gray-600 rounded-lg py-2 hover:bg-gray-800 transition shadow-sm"
-                        >
+                        <button onClick={handleNewChat} className="w-full flex items-center justify-center gap-2 border border-gray-600 rounded-lg py-2 hover:bg-gray-800 transition shadow-sm">
                             <span className="text-xl">+</span> 新对话
                         </button>
                     </div>
-
                     <div className="flex-1 overflow-y-auto sidebar-height px-2 space-y-1">
                         {sessions.map(s => (
-                            <div
-                                key={s.id}
-                                onClick={() => setCurrentSessionId(s.id)}
-                                className={`group flex items-center justify-between p-3 rounded-lg cursor-pointer transition ${currentSessionId === s.id ? 'bg-gray-700' : 'hover:bg-gray-800'}`}
-                            >
+                            <div key={s.id} onClick={() => setCurrentSessionId(s.id)} className={`group flex items-center justify-between p-3 rounded-lg cursor-pointer transition ${currentSessionId === s.id ? 'bg-gray-700' : 'hover:bg-gray-800'}`}>
                                 <div className="flex items-center gap-3 overflow-hidden">
                                     <span className="text-gray-400">💬</span>
                                     <span className="truncate text-sm font-medium">{s.title || '新对话'}</span>
                                 </div>
-                                <button
-                                    onClick={(e) => deleteSession(e, s.id)}
-                                    className="opacity-0 group-hover:opacity-100 p-1 hover:text-red-400"
-                                >
-                                    🗑️
-                                </button>
+                                <button onClick={(e) => deleteSession(e, s.id)} className="opacity-0 group-hover:opacity-100 p-1 hover:text-red-400">🗑️</button>
                             </div>
                         ))}
-                    </div>
-
-                    <div className="p-4 border-t border-gray-800 text-xs text-gray-500 text-center">
-                        多智能体科研助手 v2.0
                     </div>
                 </div>
 
                 {/* 2. 右侧对话主区域 */}
                 <div className="flex-1 flex flex-col">
-                    {/* Header */}
                     <div className="h-16 border-b flex items-center px-8 justify-between bg-white shadow-sm">
-                        <h2 className="font-bold text-gray-700">
-                            {currentSessionId ? "正在对话" : "新对话问答"}
-                        </h2>
+                        <h2 className="font-bold text-gray-700">{currentSessionId ? "正在对话" : "新对话问答"}</h2>
                     </div>
 
-                    {/* Messages Container */}
-                    <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 chat-height flex flex-col">
+                    <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 flex flex-col chat-height">
                         {messages.map((msg) => (
-                            <div
-                                key={msg.id}
-                                className={`flex flex-col max-w-[85%] ${msg.role === 'user' ? 'self-end' : 'self-start'}`}
-                            >
-                                <div className={`px-4 py-3 rounded-2xl shadow-sm ${msg.role === 'user' ? 'user-message text-gray-800 rounded-tr-none' : 'assistant-message text-gray-800 rounded-tl-none'}`}>
-                                    <div className="text-xs font-bold mb-1 opacity-50 uppercase">
+                            <div key={msg.id} className={`flex flex-col max-w-[85%] group ${msg.role === 'user' ? 'self-end' : 'self-start'}`}>
+                                <div className={`relative px-4 py-3 rounded-2xl shadow-sm ${msg.role === 'user' ? 'user-message text-gray-800 rounded-tr-none' : 'assistant-message text-gray-800 rounded-tl-none'}`}>
+                                    <div className="text-[10px] font-bold mb-1 opacity-40 uppercase tracking-wider">
                                         {msg.role === 'user' ? 'YOU' : 'AGENT'}
                                     </div>
-                                    <div className="whitespace-pre-wrap leading-relaxed">{msg.content}</div>
+                                    <div className="whitespace-pre-wrap leading-relaxed text-sm md:text-base">{msg.content}</div>
+
+                                    {/* 复制按钮交互栏 */}
+                                    <div className={`mt-2 pt-1 flex items-center border-t border-gray-100 opacity-0 group-hover:opacity-100 transition-opacity duration-300`}>
+                                        <CopyButton text={msg.content} />
+                                    </div>
                                 </div>
                             </div>
                         ))}
@@ -205,7 +205,7 @@
                         <div ref={messagesEndRef} />
                     </div>
 
-                    {/* Input Area */}
+                    {/* 输入区域 */}
                     <div className="p-6 border-t bg-white">
                         <form onSubmit={handleSubmit} className="max-w-4xl mx-auto relative">
                             <input
@@ -220,13 +220,8 @@
                                 type="submit"
                                 className={`absolute right-3 top-1/2 -translate-y-1/2 px-4 py-2 rounded-lg font-medium transition ${isLoading ? 'text-gray-400' : 'text-blue-600 hover:bg-blue-50'}`}
                                 disabled={isLoading || !inputValue.trim()}
-                            >
-                                发送
-                            </button>
+                            >发送</button>
                         </form>
-                        <p className="text-center text-xs text-gray-400 mt-3">
-                            提示：对话过长时系统会自动截断旧消息以节省 Token
-                        </p>
                     </div>
                 </div>
             </div>
